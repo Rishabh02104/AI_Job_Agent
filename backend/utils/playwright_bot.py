@@ -284,6 +284,17 @@ async def submit_application_task(job_id: str):
                 "applied_at": "now()"
             }).eq("job_id", job_id).execute()
             
+            # Send immediate success email notification
+            try:
+                from utils.digest import send_application_success_email
+                send_application_success_email(
+                    job_title=job_data.get("title", "Unknown Role"),
+                    company=job_data.get("company", "Unknown Company"),
+                    job_url=job_url
+                )
+            except Exception as email_err:
+                logger.error(f"[Playwright Bot] Failed to trigger success email notification: {email_err}")
+            
         except Exception as e:
             # Capture error state
             ss_path = os.path.join(SCREENSHOT_DIR, f"{job_id}_error.png")

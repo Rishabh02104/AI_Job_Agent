@@ -275,3 +275,113 @@ def send_daily_digest() -> bool:
     except Exception as e:
         logger.error(f"[Digest] Failed to send email digest: {e}")
         return False
+
+
+def send_application_success_email(job_title: str, company: str, job_url: str) -> bool:
+    """
+    Sends an immediate email notification when the Playwright bot successfully submits an application.
+    """
+    try:
+        settings_res = supabase.table("system_settings").select("*").eq("id", DEFAULT_SETTINGS_ID).execute()
+        if not settings_res.data:
+            logger.warning("System settings not found in database. Skipping success email.")
+            return False
+        db_settings = settings_res.data[0]
+    except Exception as e:
+        logger.error(f"Failed to load settings for application success email: {e}")
+        return False
+
+    gmail_email = db_settings.get("gmail_email")
+    gmail_app_password = db_settings.get("gmail_app_password")
+
+    if not gmail_email or not gmail_app_password or gmail_email == "" or gmail_app_password == "":
+        logger.info("Gmail credentials not configured. Skipping success email notification.")
+        return False
+
+    subject = f"🚀 Application Submitted Successfully: {job_title} at {company}"
+    
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                background-color: #0b0f19;
+                color: #e2e8f0;
+                padding: 20px;
+                margin: 0;
+            }}
+            .container {{
+                max-width: 600px;
+                background-color: #111827;
+                border: 1px solid #1f2937;
+                border-radius: 12px;
+                padding: 25px;
+                margin: 0 auto;
+            }}
+            .header {{
+                border-bottom: 1px solid #1f2937;
+                padding-bottom: 15px;
+                margin-bottom: 20px;
+            }}
+            .header h1 {{
+                font-size: 20px;
+                color: #34d399;
+                margin: 0;
+            }}
+            .details {{
+                background-color: #030712;
+                border: 1px solid #1f2937;
+                border-radius: 8px;
+                padding: 15px;
+                margin-bottom: 20px;
+            }}
+            .footer {{
+                text-align: center;
+                font-size: 11px;
+                color: #475569;
+                margin-top: 20px;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>🚀 Autonomous Application Success!</h1>
+            </div>
+            <p>Your AI Job Agent has successfully submitted a tailored application in the background.</p>
+            <div class="details">
+                <p style="margin: 5px 0;"><strong>Role:</strong> {job_title}</p>
+                <p style="margin: 5px 0;"><strong>Company:</strong> {company}</p>
+                <p style="margin: 5px 0;"><strong>Listing URL:</strong> <a href="{job_url}" style="color: #6366f1; text-decoration: none;">View Position</a></p>
+                <p style="margin: 5px 0;"><strong>Applied At:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+            </div>
+            <p>The application has been moved to the <strong>"Applied"</strong> lane on your Kanban Tracker board.</p>
+            <div class="footer">
+                Generated automatically by your AI Job Agent.<br>
+                Dashboard: <a href="http://localhost:3000" style="color: #6366f1; text-decoration: none;">http://localhost:3000</a>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = gmail_email
+        msg["To"] = gmail_email
+        msg.attach(MIMEText(html_content, "html"))
+
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.starttls()
+        server.login(gmail_email, gmail_app_password)
+        server.sendmail(gmail_email, gmail_email, msg.as_string())
+        server.quit()
+        logger.info(f"[Digest] Successfully sent application success notification for {company}.")
+        return True
+    except Exception as e:
+        logger.error(f"[Digest] Failed to send application success email: {e}")
+        return False
