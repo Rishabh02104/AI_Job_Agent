@@ -50,6 +50,15 @@ class ScorerAgent(BaseAgent):
         if not resume_vector:
             return AgentResult(success=False, error="Resume does not contain vector embeddings.")
 
+        # Fetch target score threshold from settings (fallback to 0.8)
+        threshold = 0.8
+        try:
+            settings_res = supabase.table("system_settings").select("threshold").eq("id", "00000000-0000-0000-0000-000000000000").execute()
+            if settings_res.data:
+                threshold = settings_res.data[0].get("threshold", 0.8)
+        except Exception as settings_err:
+            logger.warning(f"Could not load custom threshold from settings: {settings_err}. Falling back to 0.8")
+
         # 2. Get all jobs that haven't been scored
         jobs_res = supabase.table("jobs").select("*").execute()
         if not jobs_res.data:
@@ -102,9 +111,9 @@ class ScorerAgent(BaseAgent):
                     "explanation": analysis.get("explanation", "Match computed successfully.")
                 }).execute()
 
-                # If score >= 80% (0.80), stage job application as 'queued'
+                # If score >= threshold, stage job application as 'queued'
                 staged = False
-                if final_score >= 0.80:
+                if final_score >= threshold:
                     # Check if application already exists
                     app_res = supabase.table("applications").select("id").eq("job_id", job["id"]).execute()
                     if not app_res.data:
