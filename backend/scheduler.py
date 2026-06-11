@@ -19,10 +19,10 @@ async def scheduler_loop():
     orchestrator = Orchestrator()
     tracker = TrackerAgent()
     
-    # Initialize timers (run on startup, then periodically)
-    scout_timer = 0
-    tracker_timer = 0
-    digest_timer = 0
+    # Initialize timers (run after initial delay, then periodically)
+    scout_timer = 30
+    tracker_timer = 60
+    digest_timer = 1800
     
     while True:
         try:

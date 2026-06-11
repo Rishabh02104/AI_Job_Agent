@@ -511,12 +511,24 @@ def update_resume_json(payload: dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/pipeline/run")
-def trigger_pipeline(background_tasks: BackgroundTasks, keywords: str = "AI Engineer", limit: int = 5):
+def trigger_pipeline(
+    background_tasks: BackgroundTasks, 
+    keywords: str = "AI Engineer", 
+    limit: int = 5,
+    skip_scout: bool = False,
+    skip_scorer: bool = False
+):
     """
-    Runs the full orchestrator E2E pipeline as a background task.
+    Runs the orchestrator E2E pipeline as a background task.
     """
-    background_tasks.add_task(orchestrator.run_pipeline, keywords=keywords, limit=limit)
-    return {"success": True, "message": "E2E job agent pipeline started in background."}
+    background_tasks.add_task(
+        orchestrator.run_pipeline, 
+        keywords=keywords, 
+        limit=limit,
+        skip_scout=skip_scout,
+        skip_scorer=skip_scorer
+    )
+    return {"success": True, "message": "Pipeline run started in background."}
 
 @app.on_event("startup")
 async def startup_event():

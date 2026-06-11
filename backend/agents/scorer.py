@@ -93,22 +93,30 @@ class ScorerAgent(BaseAgent):
                 # Calculate base similarity
                 base_score = calculate_cosine_similarity(resume_vector, job_vector)
                 
-                # Fetch Groq analysis
-                analysis = self._explain_match_with_groq(client, resume_json, job["description"], base_score)
-                
-                adjustment = analysis.get("score_adjustment", 0.0)
-                # Keep adjustment within safe limits (-0.2 to +0.2)
-                adjustment = max(-0.2, min(0.2, adjustment))
-                
-                final_score = max(0.0, min(1.0, base_score + adjustment))
+                try:
+                    # Fetch Groq analysis
+                    analysis = self._explain_match_with_groq(client, resume_json, job["description"], base_score)
+                    adjustment = analysis.get("score_adjustment", 0.0)
+                    # Keep adjustment within safe limits (-0.2 to +0.2)
+                    adjustment = max(-0.2, min(0.2, adjustment))
+                    final_score = max(0.0, min(1.0, base_score + adjustment))
+                    matched_skills = analysis.get("matched_skills", [])
+                    missing_skills = analysis.get("missing_skills", [])
+                    explanation = analysis.get("explanation", "Match computed successfully.")
+                except Exception as groq_err:
+                    logger.warning(f"Groq match explanation failed for job {job['id']}: {groq_err}. Falling back to base similarity score.")
+                    final_score = base_score
+                    matched_skills = []
+                    missing_skills = []
+                    explanation = f"Match score based on semantic similarity. (Qualitative analysis skipped: {str(groq_err)})"
 
                 # Insert score info into 'matches'
                 supabase.table("matches").insert({
                     "job_id": job["id"],
                     "score": final_score,
-                    "matched_skills": analysis.get("matched_skills", []),
-                    "missing_skills": analysis.get("missing_skills", []),
-                    "explanation": analysis.get("explanation", "Match computed successfully.")
+                    "matched_skills": matched_skills,
+                    "missing_skills": missing_skills,
+                    "explanation": explanation
                 }).execute()
 
                 # If score >= threshold, stage job application as 'queued'
@@ -174,7 +182,7 @@ Output a valid JSON object with the following schema:
                     messages=[
                         {"role": "user", "content": prompt}
                     ],
-                    model="llama-3.3-70b-versatile",
+                    model="llama-3.1-8b-instant",
                     temperature=0.0,
                     response_format={"type": "json_object"}
                 )

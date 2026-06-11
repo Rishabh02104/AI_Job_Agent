@@ -26,8 +26,15 @@ class Orchestrator:
         self.cover_letter_agent = CoverLetterAgent()
         self.packager = PackagerAgent()
 
-    def run_pipeline(self, keywords: str = "software engineer", location: str = "", limit: int = 5) -> dict:
-        logger.info(f"Starting E2E pipeline run for '{keywords}' (loc: '{location}')...")
+    def run_pipeline(
+        self, 
+        keywords: str = "software engineer", 
+        location: str = "", 
+        limit: int = 5,
+        skip_scout: bool = False,
+        skip_scorer: bool = False
+    ) -> dict:
+        logger.info(f"Starting pipeline run (skip_scout={skip_scout}, skip_scorer={skip_scorer})...")
         
         pipeline_status = {
             "scout": None,
@@ -37,24 +44,30 @@ class Orchestrator:
         }
 
         # Step 1: Run Job Scout
-        logger.info("Executing Step 1: Job Scout...")
-        scout_res = self.scout.run({"keywords": keywords, "location": location, "limit": limit})
-        pipeline_status["scout"] = scout_res.data
-        
-        if not scout_res.success:
-            logger.warning(f"Scout Agent stopped: {scout_res.error}")
-            pipeline_status["errors"].append(f"Scout stopped: {scout_res.error}")
-            # Do not crash the pipeline; try to score whatever might be unscored in the DB from previous runs.
+        if not skip_scout:
+            logger.info("Executing Step 1: Job Scout...")
+            scout_res = self.scout.run({"keywords": keywords, "location": location, "limit": limit})
+            pipeline_status["scout"] = scout_res.data
+            
+            if not scout_res.success:
+                logger.warning(f"Scout Agent stopped: {scout_res.error}")
+                pipeline_status["errors"].append(f"Scout stopped: {scout_res.error}")
+                # Do not crash the pipeline; try to score whatever might be unscored in the DB from previous runs.
+        else:
+            logger.info("Skipping Step 1: Job Scout as requested.")
         
         # Step 2: Run Scorer
-        logger.info("Executing Step 2: Match Scorer...")
-        scorer_res = self.scorer.run({"limit": limit})
-        pipeline_status["scorer"] = scorer_res.data
-        
-        if not scorer_res.success:
-            logger.error(f"Scorer Agent failed: {scorer_res.error}")
-            pipeline_status["errors"].append(f"Scorer failed: {scorer_res.error}")
-            return pipeline_status
+        if not skip_scorer:
+            logger.info("Executing Step 2: Match Scorer...")
+            scorer_res = self.scorer.run({"limit": limit})
+            pipeline_status["scorer"] = scorer_res.data
+            
+            if not scorer_res.success:
+                logger.error(f"Scorer Agent failed: {scorer_res.error}")
+                pipeline_status["errors"].append(f"Scorer failed: {scorer_res.error}")
+                return pipeline_status
+        else:
+            logger.info("Skipping Step 2: Match Scorer as requested.")
 
         # Step 3: Identify 'queued' applications that need tailoring
         logger.info("Checking for 'queued' applications that need tailoring...")
@@ -77,12 +90,12 @@ class Orchestrator:
             job_id = qj["job_id"]
             logger.info(f"Processing tailoring for Job ID: {job_id}...")
 
-            # Run Resume Optimizer (with 3 retries for Groq rate limits)
+            # Run Resume Optimizer (with retries for Groq rate limits)
             if idx > 0:
-                logger.info("Pacing delay: waiting 4 seconds before starting next job tailoring...")
-                time.sleep(4)
+                logger.info("Pacing delay: waiting 20 seconds before starting next job tailoring...")
+                time.sleep(20)
                 
-            opt_res = self._run_agent_with_retry(self.optimizer, {"job_id": job_id})
+            opt_res = self._run_agent_with_retry(self.optimizer, {"job_id": job_id}, retries=4, backoff=20.0)
             if not opt_res or not opt_res.success:
                 err_msg = f"Resume optimization failed for job {job_id}: {opt_res.error if opt_res else 'Timeout'}"
                 logger.error(err_msg)
@@ -91,12 +104,12 @@ class Orchestrator:
 
             tailored_resume_url = opt_res.data.get("tailored_resume_url")
 
-            # Pacing delay: wait 4 seconds between optimizer and cover letter agent
-            logger.info("Pacing delay: waiting 4 seconds before generating cover letter...")
-            time.sleep(4)
+            # Pacing delay: wait 20 seconds between optimizer and cover letter agent
+            logger.info("Pacing delay: waiting 20 seconds before generating cover letter...")
+            time.sleep(20)
 
             # Run Cover Letter Agent
-            cl_res = self._run_agent_with_retry(self.cover_letter_agent, {"job_id": job_id})
+            cl_res = self._run_agent_with_retry(self.cover_letter_agent, {"job_id": job_id}, retries=4, backoff=20.0)
             if not cl_res or not cl_res.success:
                 err_msg = f"Cover letter generation failed for job {job_id}: {cl_res.error if cl_res else 'Timeout'}"
                 logger.error(err_msg)
@@ -123,7 +136,7 @@ class Orchestrator:
         logger.info("Pipeline E2E execution finished.")
         return pipeline_status
 
-    def _run_agent_with_retry(self, agent: Any, inputs: dict, retries: int = 3, backoff: float = 2.0) -> Any:
+    def _run_agent_with_retry(self, agent: Any, inputs: dict, retries: int = 4, backoff: float = 20.0) -> Any:
         """
         Executes an agent run with automatic retries for rate-limiting (HTTP 429) errors.
         """
