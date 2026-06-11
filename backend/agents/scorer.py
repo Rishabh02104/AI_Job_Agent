@@ -1,10 +1,14 @@
 import json
 import math
+import logging
 from typing import Dict, Any
 from agents.base import BaseAgent, AgentResult
 from db import supabase
 from config import settings
 from groq import Groq
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logger = logging.getLogger(__name__)
 
 def calculate_cosine_similarity(v1: list, v2: list) -> float:
     if not v1 or not v2:
@@ -152,14 +156,26 @@ Output a valid JSON object with the following schema:
   "explanation": "A one-paragraph summary of the match justification"
 }}
 """
-        chat_completion = client.chat.completions.create(
-            messages=[
-                {"role": "user", "content": prompt}
-            ],
-            model="llama-3.3-70b-versatile",
-            temperature=0.0,
-            response_format={"type": "json_object"}
-        )
-        
-        content = chat_completion.choices[0].message.content
-        return json.loads(content)
+        import time
+        retries = 3
+        backoff = 20.0
+        for i in range(retries):
+            try:
+                chat_completion = client.chat.completions.create(
+                    messages=[
+                        {"role": "user", "content": prompt}
+                    ],
+                    model="llama-3.3-70b-versatile",
+                    temperature=0.0,
+                    response_format={"type": "json_object"}
+                )
+                content = chat_completion.choices[0].message.content
+                return json.loads(content)
+            except Exception as e:
+                err_msg = str(e)
+                if i < retries - 1 and ("429" in err_msg or "rate limit" in err_msg.lower()):
+                    wait_time = backoff * (2 ** i)
+                    logger.warning(f"Groq Rate Limit in Scorer. Retrying in {wait_time}s... (Attempt {i+1}/{retries})")
+                    time.sleep(wait_time)
+                else:
+                    raise e
