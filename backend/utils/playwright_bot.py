@@ -446,6 +446,47 @@ async def run_generic_submission(page: Page, job_url: str, name: str, email: str
     await page.goto(job_url)
     await page.wait_for_load_state("networkidle")
     
+    # Indeed external redirect handling
+    if "indeed.com" in job_url:
+        logger.info("[Playwright Bot] Indeed URL detected. Looking for redirect or easy apply buttons...")
+        apply_selectors = [
+            "a:has-text('Apply on company site')", 
+            "button:has-text('Apply on company site')",
+            "a:has-text('Apply now')", 
+            "button:has-text('Apply now')",
+            "#indeedApplyButton",
+            ".css-ia3gsu"
+        ]
+        
+        btn = None
+        for sel in apply_selectors:
+            el = page.locator(sel).first
+            if await el.is_visible():
+                btn = el
+                break
+                
+        if btn:
+            logger.info("[Playwright Bot] Found Indeed apply button. Clicking...")
+            try:
+                async with page.expect_popup(timeout=5000) as popup_info:
+                    await btn.click()
+                page = await popup_info.value
+                await page.wait_for_load_state("networkidle")
+                logger.info(f"[Playwright Bot] Redirected page URL: {page.url}")
+                
+                # Check for specialised handoffs
+                new_url = page.url
+                if "greenhouse" in new_url:
+                    await run_greenhouse_submission(page, new_url, name, email, phone, resume_path, cover_letter, settings_dict)
+                    return
+                elif "lever" in new_url:
+                    await run_lever_submission(page, new_url, name, email, phone, resume_path, cover_letter, settings_dict)
+                    return
+            except Exception as click_err:
+                logger.warning(f"[Playwright Bot] Indeed click redirect failed: {click_err}, continuing on current page...")
+                await btn.click()
+                await page.wait_for_timeout(4000)
+                
     apply_links = ["apply", "submit application", "apply now", "join us"]
     for link_text in apply_links:
         btn = page.locator(f"text={link_text}").first
