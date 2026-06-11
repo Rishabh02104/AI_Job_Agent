@@ -11,6 +11,7 @@ import {
   AlertCircle,
   Loader2
 } from "lucide-react";
+import { API_BASE_URL } from "@/config";
 
 export default function Dashboard() {
   const [stats, setStats] = useState<any>(null);
@@ -22,7 +23,7 @@ export default function Dashboard() {
 
   const fetchStats = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/stats");
+      const res = await fetch(`${API_BASE_URL}/api/stats`);
       if (!res.ok) {
         throw new Error(`API returned status ${res.status}`);
       }
@@ -46,7 +47,7 @@ export default function Dashboard() {
     setRunning(true);
     setMessage("");
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/pipeline/run?keywords=${encodeURIComponent(keywords)}&limit=${limit}`, {
+      const res = await fetch(`${API_BASE_URL}/api/pipeline/run?keywords=${encodeURIComponent(keywords)}&limit=${limit}`, {
         method: "POST"
       });
       const data = await res.json();

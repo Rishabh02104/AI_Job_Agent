@@ -12,6 +12,7 @@ import {
   Plus,
   Loader2
 } from "lucide-react";
+import { API_BASE_URL } from "@/config";
 
 export default function JobFeed() {
   const [jobs, setJobs] = useState<any[]>([]);
@@ -22,7 +23,7 @@ export default function JobFeed() {
 
   const fetchJobs = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/jobs");
+      const res = await fetch(`${API_BASE_URL}/api/jobs`);
       if (!res.ok) {
         throw new Error(`API returned status ${res.status}`);
       }
@@ -48,7 +49,7 @@ export default function JobFeed() {
   const handleStageJob = async (jobId: string) => {
     setActioningJobId(jobId);
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/applications/${jobId}/status`, {
+      const res = await fetch(`${API_BASE_URL}/api/applications/${jobId}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "queued" })

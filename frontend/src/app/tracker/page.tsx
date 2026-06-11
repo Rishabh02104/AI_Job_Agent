@@ -9,6 +9,7 @@ import {
   Loader2,
   Trash2
 } from "lucide-react";
+import { API_BASE_URL } from "@/config";
 
 const COLUMNS = [
   { key: "saved", title: "Saved Listings", color: "border-slate-800 bg-slate-900/10 text-slate-400" },
@@ -25,7 +26,7 @@ export default function ApplicationTracker() {
 
   const fetchApplications = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/applications");
+      const res = await fetch(`${API_BASE_URL}/api/applications`);
       if (!res.ok) {
         throw new Error(`API returned status ${res.status}`);
       }
@@ -52,7 +53,7 @@ export default function ApplicationTracker() {
   const handleStatusChange = async (jobId: string, newStatus: string) => {
     setUpdatingId(jobId);
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/applications/${jobId}/status`, {
+      const res = await fetch(`${API_BASE_URL}/api/applications/${jobId}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus })

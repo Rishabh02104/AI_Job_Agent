@@ -13,6 +13,7 @@ import {
   Edit2,
   Save
 } from "lucide-react";
+import { API_BASE_URL } from "@/config";
 
 export default function ReviewQueue() {
   const [apps, setApps] = useState<any[]>([]);
@@ -23,7 +24,7 @@ export default function ReviewQueue() {
 
   const fetchApplications = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/applications");
+      const res = await fetch(`${API_BASE_URL}/api/applications`);
       if (!res.ok) {
         throw new Error(`API returned status ${res.status}`);
       }
@@ -62,7 +63,7 @@ export default function ReviewQueue() {
     const activeApp = apps[selectedAppIndex];
     setSaving(true);
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/applications/${activeApp.job_id}`, {
+      const res = await fetch(`${API_BASE_URL}/api/applications/${activeApp.job_id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cover_letter: coverLetter })
@@ -86,14 +87,14 @@ export default function ReviewQueue() {
     const activeApp = apps[selectedAppIndex];
     try {
       // Auto-save active changes first
-      await fetch(`http://127.0.0.1:8000/api/applications/${activeApp.job_id}`, {
+      await fetch(`${API_BASE_URL}/api/applications/${activeApp.job_id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cover_letter: coverLetter })
       });
 
       // Trigger Approve
-      const res = await fetch(`http://127.0.0.1:8000/api/applications/${activeApp.job_id}/approve`, {
+      const res = await fetch(`${API_BASE_URL}/api/applications/${activeApp.job_id}/approve`, {
         method: "POST"
       });
       const data = await res.json();
@@ -116,7 +117,7 @@ export default function ReviewQueue() {
       return;
     }
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/applications/${activeApp.job_id}/reject`, {
+      const res = await fetch(`${API_BASE_URL}/api/applications/${activeApp.job_id}/reject`, {
         method: "POST"
       });
       const data = await res.json();

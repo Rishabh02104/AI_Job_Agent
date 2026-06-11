@@ -18,6 +18,7 @@ import {
   Globe,
   UserCheck
 } from "lucide-react";
+import { API_BASE_URL } from "@/config";
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<"system" | "resume">("system");
@@ -62,7 +63,7 @@ export default function SettingsPage() {
 
   const fetchResume = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/resume");
+      const res = await fetch(`${API_BASE_URL}/api/resume`);
       if (res.ok) {
         const data = await res.json();
         if (data) {
@@ -79,7 +80,7 @@ export default function SettingsPage() {
 
   const fetchSettings = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/settings");
+      const res = await fetch(`${API_BASE_URL}/api/settings`);
       if (res.ok) {
         const data = await res.json();
         setSettings(data);
@@ -117,7 +118,7 @@ export default function SettingsPage() {
     setUploading(true);
     setResumeMessage("");
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/resume/upload", {
+      const res = await fetch(`${API_BASE_URL}/api/resume/upload`, {
         method: "POST",
         body: formData
       });
@@ -143,7 +144,7 @@ export default function SettingsPage() {
     setResumeMessage("");
     try {
       const parsedJson = JSON.parse(resumeJsonStr);
-      const res = await fetch("http://127.0.0.1:8000/api/resume", {
+      const res = await fetch(`${API_BASE_URL}/api/resume`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(parsedJson)
@@ -168,7 +169,7 @@ export default function SettingsPage() {
     setSavingSettings(true);
     setSettingsMessage("");
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/settings", {
+      const res = await fetch(`${API_BASE_URL}/api/settings`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(settings)
