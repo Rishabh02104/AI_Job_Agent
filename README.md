@@ -1,10 +1,70 @@
-# AI Job Agent 🚀
+<div align="center">
 
-AI Job Agent is an autonomous, agentic job search and application pipeline. It handles the end-to-end lifecycle of job hunting: from scraping job search engines and scoring matches against your resume, to tailoring resumes/cover letters, auto-submitting forms (with "Simplify Copilot" auto-filling), classifying recruiter emails, and updating a Kanban progress board.
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:00FFB2,100:080808&height=180&section=header&text=AI%20JOB%20AGENT&fontSize=50&fontColor=00FFB2&fontAlignY=55&animation=fadeIn&desc=AUTONOMOUS+JOB+APPLICATION+PIPELINE&descSize=12&descAlignY=78&descColor=ffffff" />
+
+<p align="center">
+  <img src="https://readme-typing-svg.demolab.com?font=Space+Mono&size=18&duration=3000&pause=800&color=00FFB2&center=true&vCenter=true&width=600&lines=Autonomous+Job+Hunting;Scraping+%26+Semantic+Matching;Resume+%26+Cover+Letter+Optimization;Playwright+Auto-Form+Filling" alt="Typing SVG" />
+</p>
+
+<img src="https://komarev.com/ghpvc/?username=Rishabh02104-aijobagent&color=00FFB2&style=for-the-badge&label=AGENT+ACCESS" />
+<img src="https://img.shields.io/badge/STATUS-ACTIVE_DEVELOPMENT-ff9900?style=for-the-badge&logo=statuspage&logoColor=black" />
+<img src="https://img.shields.io/badge/VERSION-v1.2.0-00E5FF?style=for-the-badge&logo=semver&logoColor=white" />
+
+<br/><br/>
+
+<a href="https://github.com/Rishabh02104/AI_Job_Agent"><img src="https://img.shields.io/badge/🌐_REPOSITORY-000000?style=for-the-badge&logo=github&logoColor=00FFB2" /></a>
+<a href="https://frontend-two-sigma-88.vercel.app/"><img src="https://img.shields.io/badge/LIVE_DEMO-00C7B7?style=for-the-badge&logo=vercel&logoColor=white" /></a>
+
+</div>
+
+<img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11e8-908a-139a6edaec5c.gif" />
 
 ---
 
-## 🏗️ Architecture Overview
+## ⚙️ SYSTEM SPECIFICATIONS
+
+**AI Job Agent** is an autonomous, agentic job search and application pipeline. It handles the end-to-end lifecycle of job hunting: from scraping job search engines and scoring matches against your resume, to tailoring resumes/cover letters, auto-submitting forms, classifying recruiter emails, and updating a Kanban progress board.
+
+<div align="center">
+
+| PARAMETER | DESCRIPTION / VALUE |
+|:---|:---|
+| 🤖 **AGENT TYPE** | End-to-End Autonomous Application Pipeline |
+| 🧠 **AI CORE** | Groq (Llama-3.3-70b) + sentence-transformers (Local Embeddings) |
+| 🕷️ **CRAWLER** | Async Playwright (Indeed, Adzuna, Internshala) |
+| 📊 **VECTOR DATABASE** | Supabase (PostgreSQL with `pgvector` extension) |
+| 📬 **GMAIL TRACKER** | IMAP integration + email classifier scheduler |
+| 📅 **DAILY DIGEST** | HTML status summaries scheduled to send at 9:00 AM daily |
+
+</div>
+
+<img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11e8-908a-139a6edaec5c.gif" />
+
+---
+
+## 🛠️ SUBSYSTEM TECHNOLOGY MATRIX
+
+<div align="center">
+
+**`[ FRONTEND WORKSPACE ]`**
+
+<img src="https://skillicons.dev/icons?i=nextjs,react,ts,js,tailwind&theme=dark" />
+
+**`[ BACKEND & AGENTIC STACK ]`**
+
+<img src="https://skillicons.dev/icons?i=python,fastapi,supabase,postgres&theme=dark" />
+<br/>
+<img src="https://img.shields.io/badge/Playwright-2EAD33?style=for-the-badge&logo=playwright&logoColor=white" />
+<img src="https://img.shields.io/badge/Llama--3.3-FF6B35?style=for-the-badge" />
+<img src="https://img.shields.io/badge/Sentence_Transformers-7C3AED?style=for-the-badge" />
+
+</div>
+
+<img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11e8-908a-139a6edaec5c.gif" />
+
+---
+
+## 🚀 PIPELINE ARCHITECTURE
 
 ```mermaid
 graph TD
@@ -26,7 +86,7 @@ graph TD
         O --> Pkg[packager.py]
         
         M -->|Approve & Apply| Bot[playwright_bot.py]
-        S -->|Hourly check| Trk[tracker.py]
+        S -->|Hourly Check| Trk[tracker.py]
         S -->|Daily 9 AM| Dgt[digest.py]
     end
     
@@ -38,11 +98,16 @@ graph TD
     Scout --> DB_URL
     Trk --> DB_URL
     Bot --> DB_URL
+    style DB_URL fill:#0d1117,stroke:#00E5FF,color:#00E5FF
+    style Bot fill:#0d1117,stroke:#00FFB2,color:#00FFB2
+    style Scout fill:#0d1117,stroke:#FF6B35,color:#FF6B35
 ```
+
+<img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11e8-908a-139a6edaec5c.gif" />
 
 ---
 
-## ✨ Features
+## 🌟 CORE AGENT CAPABILITIES
 
 ### 1. 🔍 Job Scout Agent
 - Scrapes listings from multiple job sources:
@@ -67,7 +132,7 @@ graph TD
 - **Legal & EEO Demographics**: Automatically maps and selects Equal Opportunity questions (gender, race, veteran status, and disability disclosures) based on user configuration.
 - **Work Authorization**: Detects and answers sponsorship requirements and notice periods using smart text heuristics.
 
-### 5. 📬 Gmail recruiter tracker
+### 5. 📬 Gmail Recruiter Tracker
 - Connects via **IMAP** to scan your inbox for status updates.
 - Uses **Llama-3.3** classification to map incoming email bodies to active job applications and automatically transitions the Kanban status lanes (e.g. from `applied` to `interview` or `rejected`).
 
@@ -75,24 +140,18 @@ graph TD
 - A background worker schedular runs scouting hourly and classifies incoming emails.
 - Sends a dark-mode styled HTML summary email to your inbox at **9:00 AM** showing your dashboard counters, new matches found, and recent recruiter emails.
 
----
-
-## 🛠️ Tech Stack
-
-- **Backend**: FastAPI, Playwright (Python), BeautifulSoup4, ReportLab, Sentence-Transformers, Supabase-py, Groq SDK.
-- **Frontend**: Next.js (App Router), React 19, TailwindCSS, Lucide Icons.
-- **Database**: Supabase (PostgreSQL with `pgvector` extension for storing and querying resume/job embeddings).
+<img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11e8-908a-139a6edaec5c.gif" />
 
 ---
 
-## 🚀 Getting Started
+## 🚀 GETTING STARTED
 
 ### 1. Database Setup (Supabase)
 1. Initialize a Supabase project.
 2. In the **SQL Editor**, execute the migration files chronologically:
-   - Run [20260611000000_init_schema.sql](file:///a:/AI Job Agent/supabase/migrations/20260611000000_init_schema.sql)
-   - Run [20260611000100_add_settings.sql](file:///a:/AI Job Agent/supabase/migrations/20260611000100_add_settings.sql)
-   - Run [20260611000200_add_copilot_fields.sql](file:///a:/AI Job Agent/supabase/migrations/20260611000200_add_copilot_fields.sql)
+   - Run [20260611000000_init_schema.sql](file:///a:/AI%20Job%20Agent/supabase/migrations/20260611000000_init_schema.sql)
+   - Run [20260611000100_add_settings.sql](file:///a:/AI%20Job%20Agent/supabase/migrations/20260611000100_add_settings.sql)
+   - Run [20260611000200_add_copilot_fields.sql](file:///a:/AI%20Job%20Agent/supabase/migrations/20260611000200_add_copilot_fields.sql)
 
 ### 2. Backend Setup
 1. Navigate to the backend directory:
@@ -127,19 +186,18 @@ graph TD
    ```bash
    cd ../frontend
    ```
-2. Install dependencies:
+2. Install dependencies & launch:
    ```bash
    npm install
-   ```
-3. Run the Next.js development server:
-   ```bash
    npm run dev
    ```
-4. Open your browser to `http://localhost:3000`.
+3. Open your browser to `http://localhost:3000`.
+
+<img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11e8-908a-139a6edaec5c.gif" />
 
 ---
 
-## 🧪 Running Verification Tests
+## 🧪 RUNNING VERIFICATION TESTS
 
 To verify both the Playwright copilot autofill and Indeed crawler locally, you can run the dry run scripts:
 
@@ -151,7 +209,21 @@ python backend/tests/test_copilot_dry.py
 python backend/tests/test_indeed_dry.py
 ```
 
+<img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11e8-908a-139a6edaec5c.gif" />
+
 ---
 
-## 🔒 Security Warning
-Ensure you **never** commit your `.env` or `.env.local` files containing real API credentials or database connection strings. They are listed in the root `.gitignore` to stay safe.
+## 📬 SYSTEM CORE CONNECTION
+
+```bash
+╔══════════════════════════════════════════════════════════════════╗
+║  [session_id]  :: rishavendrasharma9353@gmail.com               ║
+║  [port]        :: 8000 — backend | 3000 — frontend              ║
+║  [stack]       :: FastAPI · Playwright · Supabase · pgvector    ║
+║  [uptime]      :: building since 2022 — no signs of stopping    ║
+║  [last_commit] :: patch/scraping-anti-detection-bypass          ║
+║  [status]      :: OPEN TO SDE-1 ROLES — immediate joiner        ║
+╚══════════════════════════════════════════════════════════════════╝
+```
+
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:080808,100:00FFB2&height=100&section=footer" />
