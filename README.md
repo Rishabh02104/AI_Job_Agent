@@ -126,11 +126,14 @@ graph TD
 - **PDF Renderer**: Dynamically generates a clean, single-page, professional PDF using `reportlab`.
 - **Cover Letter Agent**: Crafts a matching, highly-tailored 3-paragraph cover letter contextually fitted to the role.
 
-### 4. 🤖 "Simplify Copilot" Auto-Submitter
+### 4. 🤖 "Simplify Copilot" Auto-Submitter & CAPTCHA Resolver
 - Automates form filling on **Greenhouse, Lever, Internshala**, and other career portals using async Playwright.
 - **Form Autofill Engine**: Automatically detects and populates input profiles (GitHub, LinkedIn, Portfolio).
 - **Legal & EEO Demographics**: Automatically maps and selects Equal Opportunity questions (gender, race, veteran status, and disability disclosures) based on user configuration.
 - **Work Authorization**: Detects and answers sponsorship requirements and notice periods using smart text heuristics.
+- **Headed/Configurable Modes**: Toggle browser headed mode in settings (`run_headless = False`) to watch form-filling and manually solve CAPTCHAs in real-time.
+- **On-Page Warning Banner**: Injects a floating red alert banner at the top of the browser page identifying the job and company requiring manual CAPTCHA interaction.
+- **E2E Auto-Apply**: Toggle Auto-Apply in settings to automatically submit matching applications in the background without needing manual review board approval.
 
 ### 5. 📬 Gmail Recruiter Tracker
 - Connects via **IMAP** to scan your inbox for status updates.
@@ -199,7 +202,7 @@ graph TD
 
 ## 🧪 RUNNING VERIFICATION TESTS
 
-To verify both the Playwright copilot autofill and Indeed crawler locally, you can run the dry run scripts:
+To verify both the Playwright copilot autofill, Indeed crawler, and CAPTCHA manual solving loop locally, you can run the dry run scripts:
 
 ```bash
 # Test the Simplify Copilot mapping logic on a mock EEO HTML page
@@ -207,6 +210,9 @@ python backend/tests/test_copilot_dry.py
 
 # Test Indeed search scraping and card details extraction
 python backend/tests/test_indeed_dry.py
+
+# Run the automated CAPTCHA manual solving loop dry run (headed browser, mock portal)
+python backend/tests/test_captcha_dry.py
 ```
 
 <img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11e8-908a-139a6edaec5c.gif" />
