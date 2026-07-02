@@ -95,6 +95,19 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {stats?.resume_uploaded === false && (
+        <div className="p-5 bg-amber-950/20 border border-amber-500/20 rounded-2xl flex items-start space-x-3.5">
+          <AlertCircle className="h-6 w-6 text-amber-400 mt-0.5 flex-shrink-0" />
+          <div className="space-y-1">
+            <h4 className="text-sm font-bold text-amber-400">No Resume Uploaded</h4>
+            <p className="text-xs text-slate-350 leading-relaxed">
+              Your agent has no base resume profile to match job postings against. 
+              Please go to the <a href="/settings" className="underline text-indigo-400 hover:text-indigo-300 font-semibold">Settings page</a> to upload your resume document first.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Metric Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* Card 1: Scouted */}

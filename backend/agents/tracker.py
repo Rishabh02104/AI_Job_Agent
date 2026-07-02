@@ -54,6 +54,9 @@ class TrackerAgent(BaseAgent):
 
         logger.info(f"Tracking updates for {len(active_apps)} active application(s)...")
 
+        # NOTE: This Gmail IMAP tracking loop is now the SOURCE OF TRUTH for confirming
+        # real applied status via the company's own confirmation email. The browser bot's
+        # self-reported "applied" status is provisional until an email_events row corroborates it.
         # 3. Connect to Gmail via IMAP
         emails_parsed = []
         updates_detected = []

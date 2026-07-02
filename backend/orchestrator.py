@@ -85,6 +85,15 @@ class Orchestrator:
 
         logger.info(f"Found {len(queued_jobs)} application(s) queued for tailoring. Processing...")
 
+        # Check if auto_apply is enabled
+        auto_apply = False
+        try:
+            settings_res = supabase.table("system_settings").select("auto_apply").eq("id", "00000000-0000-0000-0000-000000000000").execute()
+            if settings_res.data:
+                auto_apply = settings_res.data[0].get("auto_apply", False)
+        except Exception as e:
+            logger.warning(f"Could not load auto_apply setting: {e}")
+
         # Step 4: Tailor resume and cover letter for each queued job
         for idx, qj in enumerate(queued_jobs):
             job_id = qj["job_id"]
@@ -132,6 +141,25 @@ class Orchestrator:
             else:
                 logger.info(f"Job ID {job_id} successfully packaged and advanced to Human Review Gate.")
                 pipeline_status["tailored_applications"].append(job_id)
+                
+                # Check for Auto-Apply
+                if auto_apply:
+                    logger.info(f"Auto-Apply enabled. Launching submission for Job ID {job_id}...")
+                    try:
+                        from utils.playwright_bot import submit_application_task
+                        import asyncio
+                        
+                        try:
+                            loop = asyncio.get_running_loop()
+                        except RuntimeError:
+                            loop = None
+                            
+                        if loop and loop.is_running():
+                            loop.create_task(submit_application_task(job_id))
+                        else:
+                            asyncio.run(submit_application_task(job_id))
+                    except Exception as apply_err:
+                        logger.error(f"Failed to auto-apply for job {job_id}: {apply_err}")
 
         logger.info("Pipeline E2E execution finished.")
         return pipeline_status

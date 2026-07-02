@@ -2,6 +2,7 @@ import os
 import json
 import asyncio
 import logging
+from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
 from playwright.async_api import async_playwright, Page, Locator
 from db import supabase
@@ -14,6 +15,178 @@ logger = logging.getLogger(__name__)
 DEFAULT_SETTINGS_ID = "00000000-0000-0000-0000-000000000000"
 SCREENSHOT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "screenshots")
 os.makedirs(SCREENSHOT_DIR, exist_ok=True)
+
+async def detect_captcha(page: Page) -> bool:
+    """
+    Checks for visible CAPTCHA widgets using known selectors and text patterns.
+    """
+    selectors = [
+        "iframe[src*='recaptcha']",
+        "div.g-recaptcha",
+        "iframe[src*='hcaptcha']",
+        "div.h-captcha",
+        "iframe[src*='turnstile']",
+        "div.cf-turnstile"
+    ]
+    for sel in selectors:
+        try:
+            loc = page.locator(sel).first
+            if await loc.is_visible(timeout=1000):
+                logger.info(f"[Playwright Bot] Visible CAPTCHA widget detected via selector: {sel}")
+                return True
+        except Exception:
+            pass
+            
+    try:
+        # Check for text patterns case-insensitive
+        body_text = (await page.inner_text("body", timeout=1000)).lower()
+        if "verify you are human" in body_text or "i'm not a robot" in body_text:
+            logger.info("[Playwright Bot] CAPTCHA text patterns detected in page body.")
+            return True
+    except Exception:
+        pass
+        
+    return False
+
+async def verify_submission_success(page: Page) -> bool:
+    """
+    Verifies if the job application submission was successful using confirmation text or URL patterns.
+    """
+    # Check current URL
+    current_url = page.url.lower()
+    url_patterns = ["thank", "confirmation", "success", "applied"]
+    if any(pat in current_url for pat in url_patterns):
+        logger.info(f"[Playwright Bot] Submission success detected via URL: {page.url}")
+        return True
+        
+    # Check page body text
+    try:
+        body_text = (await page.inner_text("body", timeout=2000)).lower()
+        confirmation_phrases = [
+            "thank you for applying",
+            "application submitted",
+            "application received",
+            "successfully applied",
+            "we have received your application",
+            "your application has been submitted",
+            "application complete"
+        ]
+        if any(phrase in body_text for phrase in confirmation_phrases):
+            logger.info("[Playwright Bot] Submission success detected via page text confirmation.")
+            return True
+    except Exception as e:
+        logger.warning(f"[Playwright Bot] Error reading page text for success check: {e}")
+        
+    return False
+
+async def inject_captcha_banner(page: Page, job_title: str, company: str):
+    """
+    Injects a highly visible warning banner at the top of the browser page to indicate
+    which job application requires manual CAPTCHA solving.
+    """
+    try:
+        html = f"""
+        const banner = document.createElement('div');
+        banner.id = 'ai-job-agent-captcha-banner';
+        banner.style.position = 'fixed';
+        banner.style.top = '0';
+        banner.style.left = '0';
+        banner.style.width = '100%';
+        banner.style.backgroundColor = '#f43f5e';
+        banner.style.color = '#ffffff';
+        banner.style.textAlign = 'center';
+        banner.style.padding = '15px';
+        banner.style.fontSize = '16px';
+        banner.style.fontWeight = 'bold';
+        banner.style.zIndex = '9999999';
+        banner.style.boxShadow = '0 4px 6px rgba(0,0,0,0.3)';
+        banner.style.fontFamily = 'Arial, sans-serif';
+        banner.innerHTML = `⚠️ ACTION REQUIRED: Solve CAPTCHA for <strong>{job_title}</strong> at <strong>{company}</strong>, then click submit.`;
+        document.body.appendChild(banner);
+        document.body.style.marginTop = '60px';
+        """
+        await page.evaluate(html)
+        logger.info(f"[Playwright Bot] Injected CAPTCHA banner on page for {job_title} at {company}")
+    except Exception as e:
+        logger.warning(f"[Playwright Bot] Failed to inject CAPTCHA banner: {e}")
+
+async def wait_for_manual_captcha_resolution(page: Page, job_id: str, timeout_seconds: int = 180, poll_every: int = 5) -> bool:
+    """
+    Leaves browser open and waits for human operator to solve CAPTCHA and submit the form manually.
+    Updates DB status to 'needs_human' and polls for success.
+    """
+    logger.warning(f"[Playwright Bot] CAPTCHA detected. Updating job {job_id} status to 'needs_human'...")
+    try:
+        supabase.table("applications").update({
+            "status": "needs_human",
+            "updated_at": "now()"
+        }).eq("job_id", job_id).execute()
+    except Exception as db_err:
+        logger.error(f"[Playwright Bot] Failed to update status to needs_human: {db_err}")
+        
+    logger.info("====== MANUAL ACTION REQUIRED ======")
+    logger.info(f"CAPTCHA blocked application for job ID: {job_id}.")
+    logger.info("The browser window has been left open.")
+    logger.info("Please solve the CAPTCHA and click SUBMIT in the browser window.")
+    logger.info(f"Timeout: {timeout_seconds} seconds. Checking status every {poll_every} seconds...")
+    logger.info("=====================================")
+    
+    start_time = datetime.now()
+    end_time = start_time + timedelta(seconds=timeout_seconds)
+    
+    while datetime.now() < end_time:
+        try:
+            if page.is_closed():
+                logger.warning("[Playwright Bot] Browser tab was closed by user.")
+                return False
+                
+            success = await verify_submission_success(page)
+            if success:
+                logger.info("[Playwright Bot] Manual resolution and submission detected!")
+                return True
+        except Exception as page_err:
+            logger.error(f"[Playwright Bot] Error polling page state: {page_err}")
+            return False
+            
+        await asyncio.sleep(poll_every)
+        
+    logger.warning(f"[Playwright Bot] Timeout reached ({timeout_seconds}s) waiting for manual CAPTCHA resolution.")
+    return False
+
+async def handle_unconfirmed_submission(page: Page, job_id: str, job_url: str):
+    """
+    Handles the case where submission status is unconfirmed and no CAPTCHA is detected.
+    """
+    logger.warning(f"[Playwright Bot] Submission unconfirmed for job {job_id}. Updating status to 'review_needed'...")
+    try:
+        supabase.table("applications").update({
+            "status": "review_needed",
+            "updated_at": "now()"
+        }).eq("job_id", job_id).execute()
+    except Exception as db_err:
+        logger.error(f"[Playwright Bot] Failed to update status to review_needed: {db_err}")
+        
+    ss_path = os.path.join(SCREENSHOT_DIR, f"{job_id}_unconfirmed.png")
+    try:
+        await page.screenshot(path=ss_path)
+    except Exception:
+        pass
+        
+    page_url = page.url
+    page_text = ""
+    try:
+        page_text = await page.inner_text("body")
+        page_text = page_text[:500].replace("\n", " ") + "..."
+    except Exception:
+        pass
+        
+    logger.warning(
+        f"[Playwright Bot] Unconfirmed Submission Details:\n"
+        f"  - Job ID: {job_id}\n"
+        f"  - Current URL: {page_url}\n"
+        f"  - Snippet: {page_text}\n"
+        f"  - Screenshot: {ss_path}"
+    )
 
 def answer_application_question(question: str, resume_json: dict, job_desc: str) -> str:
     """
@@ -217,10 +390,13 @@ async def submit_application_task(job_id: str):
     candidate_name = resume_json.get("name", "Rishabh Sharma")
     candidate_email = db_settings.get("gmail_email", "risha@example.com")
     candidate_phone = "+919876543210"
+    # Resolve run_headless configuration from settings (default to False so user can solve CAPTCHAs)
+    run_headless = db_settings.get("run_headless", False)
+    logger.info(f"[Playwright Bot] Launching browser (headless={run_headless})...")
     
     async with async_playwright() as p:
-        # Launch browser in headless mode
-        browser = await p.chromium.launch(headless=True)
+        # Launch browser with configured headless state
+        browser = await p.chromium.launch(headless=run_headless)
         context = await browser.new_context(
             viewport={"width": 1280, "height": 800},
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
@@ -273,27 +449,73 @@ async def submit_application_task(job_id: str):
                     settings_dict=db_settings
                 )
                 
-            # Log success screenshot
-            ss_path = os.path.join(SCREENSHOT_DIR, f"{job_id}_success.png")
-            await page.screenshot(path=ss_path)
-            logger.info(f"[Playwright Bot] Submission succeeded! Saved success screenshot to {ss_path}")
-            
-            # Update application status in DB
-            supabase.table("applications").update({
-                "status": "applied",
-                "applied_at": "now()"
-            }).eq("job_id", job_id).execute()
-            
-            # Send immediate success email notification
-            try:
-                from utils.digest import send_application_success_email
-                send_application_success_email(
-                    job_title=job_data.get("title", "Unknown Role"),
-                    company=job_data.get("company", "Unknown Company"),
-                    job_url=job_url
-                )
-            except Exception as email_err:
-                logger.error(f"[Playwright Bot] Failed to trigger success email notification: {email_err}")
+            # Post-submission validation logic
+            success = await verify_submission_success(page)
+            if success:
+                logger.info("[Playwright Bot] Submission confirmed successfully!")
+                ss_path = os.path.join(SCREENSHOT_DIR, f"{job_id}_success.png")
+                await page.screenshot(path=ss_path)
+                
+                # Update application status in DB
+                supabase.table("applications").update({
+                    "status": "applied",
+                    "applied_at": "now()"
+                }).eq("job_id", job_id).execute()
+                
+                # Send immediate success email notification
+                try:
+                    from utils.digest import send_application_success_email
+                    send_application_success_email(
+                        job_title=job_data.get("title", "Unknown Role"),
+                        company=job_data.get("company", "Unknown Company"),
+                        job_url=job_url
+                    )
+                except Exception as email_err:
+                    logger.error(f"[Playwright Bot] Failed to trigger success email notification: {email_err}")
+            else:
+                captcha_present = await detect_captcha(page)
+                if captcha_present:
+                    if run_headless:
+                        logger.warning(
+                            "[Playwright Bot] CAPTCHA detected but browser is running headless. "
+                            "Manual CAPTCHA solving requires 'run_headless' to be unchecked (False) in settings. "
+                            "Treating as unconfirmed submission."
+                        )
+                        await handle_unconfirmed_submission(page, job_id, job_url)
+                    else:
+                        # Inject visible title banner for headed resolution window identification
+                        await inject_captcha_banner(page, job_data.get("title", "Job"), job_data.get("company", "Company"))
+                        
+                        resolved = await wait_for_manual_captcha_resolution(page, job_id, timeout_seconds=180)
+                        if resolved:
+                            logger.info("[Playwright Bot] Submission confirmed after manual CAPTCHA solving!")
+                            ss_path = os.path.join(SCREENSHOT_DIR, f"{job_id}_success.png")
+                            await page.screenshot(path=ss_path)
+                            
+                            # Update application status in DB
+                            supabase.table("applications").update({
+                                "status": "applied",
+                                "applied_at": "now()"
+                            }).eq("job_id", job_id).execute()
+                            
+                            # Send immediate success email notification
+                            try:
+                                from utils.digest import send_application_success_email
+                                send_application_success_email(
+                                    job_title=job_data.get("title", "Unknown Role"),
+                                    company=job_data.get("company", "Unknown Company"),
+                                    job_url=job_url
+                                )
+                            except Exception as email_err:
+                                logger.error(f"[Playwright Bot] Failed to trigger success email notification: {email_err}")
+                        else:
+                            # Status is already needs_human (set in wait_for_manual_captcha_resolution)
+                            ss_path = os.path.join(SCREENSHOT_DIR, f"{job_id}_needs_human.png")
+                            await page.screenshot(path=ss_path)
+                            logger.error(f"[Playwright Bot] CAPTCHA resolution timed out. Application status left as 'needs_human'. Screenshot saved to {ss_path}")
+                else:
+                    # No CAPTCHA, no success signal -> unconfirmed submission
+                    await handle_unconfirmed_submission(page, job_id, job_url)
             
         except Exception as e:
             # Capture error state
@@ -362,7 +584,8 @@ async def run_internshala_submission(page: Page, job_url: str, email: str, passw
             ans = answer_application_question(question_text, resume_json, job_desc)
             await ta.fill(ans)
             
-    submit_btn = page.locator("input[type='submit']#submit") or page.locator("button#submit_application")
+    # Use grouped selector to find either submit element
+    submit_btn = page.locator("input[type='submit']#submit, button#submit_application")
     if await submit_btn.count() == 0:
         submit_btn = page.locator("input[type='submit'], button[type='submit']").first
         
@@ -398,17 +621,20 @@ async def run_greenhouse_submission(page: Page, job_url: str, name: str, email: 
     # Resume Upload
     if resume_path and os.path.exists(resume_path):
         logger.info(f"[Playwright Bot] Uploading tailored resume PDF from {resume_path}...")
-        file_input = page.locator("input[type='file'][accept*='pdf']").first or page.locator("input#resume_file")
+        # Use grouped selector to target file input
+        file_input = page.locator("input[type='file'][accept*='pdf'], input#resume_file").first
         await file_input.set_input_files(resume_path)
         await page.wait_for_timeout(1000)
         
     # Cover Letter textarea
-    cl_area = page.locator("textarea[name='job_application[cover_letter]']") or page.locator("textarea#cover_letter")
+    # Use grouped selector to find the cover letter field
+    cl_area = page.locator("textarea[name='job_application[cover_letter]'], textarea#cover_letter")
     if await cl_area.is_visible():
         await cl_area.fill(cover_letter)
         
     # Click Submit Application
-    submit_btn = page.locator("input[type='submit']#submit_app") or page.locator("#submit_app")
+    # Use grouped selector to find the submit button
+    submit_btn = page.locator("input[type='submit']#submit_app, #submit_app")
     await submit_btn.scroll_into_view_if_needed()
     await submit_btn.click()
     await page.wait_for_timeout(4000)
@@ -443,7 +669,8 @@ async def run_lever_submission(page: Page, job_url: str, name: str, email: str, 
     if await cl_area.is_visible():
         await cl_area.fill(cover_letter)
         
-    submit_btn = page.locator("button[type='submit']#submit-application") or page.locator(".template-btn-submit")
+    # Use grouped selector to find Lever submit button
+    submit_btn = page.locator("button[type='submit']#submit-application, .template-btn-submit")
     await submit_btn.scroll_into_view_if_needed()
     await submit_btn.click()
     await page.wait_for_timeout(4000)

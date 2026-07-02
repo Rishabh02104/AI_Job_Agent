@@ -58,7 +58,9 @@ class CoverLetterAgent(BaseAgent):
         self, client: Groq, candidate_name: str, company: str, title: str, job_desc: str, resume_json: dict
     ) -> str:
         prompt = f"""You are an expert executive cover letter writer. Write a tailored 3-paragraph cover letter for the following job and applicant details.
-Make it professional, engaging, and highly specific. Do not include placeholders like '[Insert Date]' or '[Name]'. Use the candidate's actual name '{candidate_name}'.
+Make it professional, engaging, and highly specific. Do not include placeholders like '[Insert Date]' or '[Name]'. Use the candidate's actual name '{candidate_name}' for context, but do not write in the third person.
+
+CRITICAL: The cover letter MUST be written in the first person (using "I", "my", "me"). Do NOT refer to the applicant in the third person (e.g., do NOT use "{candidate_name}", "He", "She", "Him", "Her", or "The candidate" in the body text).
 
 Company Name: {company}
 Role Title: {title}

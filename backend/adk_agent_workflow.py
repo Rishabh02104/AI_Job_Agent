@@ -259,9 +259,10 @@ async def apply_to_jobs(state: State):
 
 async def run_playwright_apply(job: Dict[str, Any], profile: Dict[str, Any], resume_path: str) -> bool:
     """Executes a browser run filling application forms and validating confirmation elements."""
+    run_headless = profile.get("run_headless", False)
     async with async_playwright() as p:
-        # Launch browser in headless mode to run in background
-        browser = await p.chromium.launch(headless=True)
+        # Launch browser in configured headless mode
+        browser = await p.chromium.launch(headless=run_headless)
         page = await browser.new_page()
         
         # Direct navigation

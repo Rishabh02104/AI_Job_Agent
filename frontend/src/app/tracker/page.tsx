@@ -13,6 +13,8 @@ import { API_BASE_URL } from "@/config";
 
 const COLUMNS = [
   { key: "saved", title: "Saved Listings", color: "border-slate-800 bg-slate-900/10 text-slate-400" },
+  { key: "review_needed", title: "Review Needed", color: "border-amber-500/20 bg-amber-500/5 text-amber-400" },
+  { key: "needs_human", title: "Action Required", color: "border-red-500/20 bg-red-500/5 text-red-400" },
   { key: "applied", title: "Applied", color: "border-blue-500/20 bg-blue-500/5 text-blue-400" },
   { key: "interview", title: "Interviews", color: "border-indigo-500/20 bg-indigo-500/5 text-indigo-400" },
   { key: "offer", title: "Offers", color: "border-emerald-500/20 bg-emerald-500/5 text-emerald-400" },

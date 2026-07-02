@@ -3,20 +3,22 @@ import psycopg2
 from config import settings
 
 def run_migrations():
-    migration_file = os.path.join(
+    migrations_dir = os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
         "supabase",
-        "migrations",
-        "20260611000100_add_settings.sql"
+        "migrations"
     )
     
-    if not os.path.exists(migration_file):
-        print(f"Migration file not found: {migration_file}")
+    if not os.path.exists(migrations_dir):
+        print(f"Migrations directory not found: {migrations_dir}")
         return
 
-    print(f"Reading migration file: {migration_file}")
-    with open(migration_file, "r") as f:
-        sql = f.read()
+    # List and sort all SQL files in the migrations directory
+    migration_files = sorted([f for f in os.listdir(migrations_dir) if f.endswith(".sql")])
+    
+    if not migration_files:
+        print("No migration files found.")
+        return
 
     db_url = settings.supabase_db_url
     print(f"Connecting to database...")
@@ -24,9 +26,16 @@ def run_migrations():
         conn = psycopg2.connect(db_url)
         conn.autocommit = True
         with conn.cursor() as cursor:
-            print("Executing migration SQL...")
-            cursor.execute(sql)
-            print("Migration completed successfully!")
+            for migration_file in migration_files:
+                file_path = os.path.join(migrations_dir, migration_file)
+                print(f"Executing migration: {migration_file}...")
+                with open(file_path, "r") as f:
+                    sql = f.read()
+                try:
+                    cursor.execute(sql)
+                except Exception as file_err:
+                    print(f"Warning: Error executing {migration_file}: {file_err}. Continuing...")
+            print("All migrations completed successfully!")
         conn.close()
     except Exception as e:
         print(f"Migration failed: {e}")

@@ -33,7 +33,7 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 orchestrator = Orchestrator()
 
 # Helper status list to check standard ENUM values
-VALID_STATUSES = ['saved', 'queued', 'reviewing', 'applied', 'interview', 'rejected', 'offer']
+VALID_STATUSES = ['saved', 'queued', 'reviewing', 'applied', 'interview', 'rejected', 'offer', 'needs_human', 'review_needed']
 
 # Models for request validation
 class SystemSettingsUpdate(BaseModel):
@@ -58,6 +58,8 @@ class SystemSettingsUpdate(BaseModel):
     race: Optional[str] = None
     disability_status: Optional[str] = None
     veteran_status: Optional[str] = None
+    run_headless: Optional[bool] = None
+    auto_apply: Optional[bool] = None
 
 class ApplicationStatusUpdate(BaseModel):
     status: str
@@ -74,13 +76,13 @@ def get_settings():
         res = supabase.table("system_settings").select("*").eq("id", DEFAULT_SETTINGS_ID).execute()
         if res.data:
             row = res.data[0]
-            if "github_url" not in row:
+            if "github_url" not in row or "run_headless" not in row or "auto_apply" not in row:
                 row["copilot_migration_pending"] = True
             return row
         # Seed it if missing
         default_row = {
             "id": DEFAULT_SETTINGS_ID,
-            "keywords": "AI Engineer",
+            "keywords": "AI Engineer, Frontend, Full Stack Engineer",
             "location": "",
             "limit_count": 5,
             "threshold": 0.8,
@@ -100,7 +102,9 @@ def get_settings():
             "gender": "Decline to self-identify",
             "race": "Decline to self-identify",
             "disability_status": "Decline to self-identify",
-            "veteran_status": "Decline to self-identify"
+            "veteran_status": "Decline to self-identify",
+            "run_headless": False,
+            "auto_apply": False
         }
         try:
             supabase.table("system_settings").insert(default_row).execute()
@@ -152,6 +156,8 @@ def get_settings():
                 "race": "Decline to self-identify",
                 "disability_status": "Decline to self-identify",
                 "veteran_status": "Decline to self-identify",
+                "run_headless": False,
+                "auto_apply": False,
                 "migration_pending": True
             }
         raise HTTPException(status_code=500, detail=str(e))
@@ -167,7 +173,7 @@ def update_settings(payload: SystemSettingsUpdate):
         if not res.data:
             default_row = {
                 "id": DEFAULT_SETTINGS_ID,
-                "keywords": "AI Engineer",
+                "keywords": "AI Engineer, Frontend, Full Stack Engineer",
                 "location": "",
                 "limit_count": 5,
                 "threshold": 0.8,
@@ -187,7 +193,9 @@ def update_settings(payload: SystemSettingsUpdate):
                 "gender": "Decline to self-identify",
                 "race": "Decline to self-identify",
                 "disability_status": "Decline to self-identify",
-                "veteran_status": "Decline to self-identify"
+                "veteran_status": "Decline to self-identify",
+                "run_headless": False,
+                "auto_apply": False
             }
             default_row.update(update_data)
             try:
@@ -206,7 +214,7 @@ def update_settings(payload: SystemSettingsUpdate):
             return default_row
             
         row = res.data[0]
-        if "github_url" not in row:
+        if "github_url" not in row or "run_headless" not in row or "auto_apply" not in row:
             row["copilot_migration_pending"] = True
         return row
     except Exception as e:
@@ -219,7 +227,7 @@ def update_settings(payload: SystemSettingsUpdate):
         elif "column" in err_msg and "does not exist" in err_msg:
             raise HTTPException(
                 status_code=400,
-                detail="The database schema is missing the new copilot columns. Please execute '20260611000200_add_copilot_fields.sql' migration in your Supabase SQL Editor."
+                detail="The database schema is missing the new copilot/headless/auto-apply columns. Please execute migration in your Supabase SQL Editor."
             )
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -237,6 +245,14 @@ def get_stats():
     Computes dashboard metrics: jobs found today, applications active, and match distributions.
     """
     try:
+        # Check if resume exists
+        resume_uploaded = False
+        try:
+            resume_res = supabase.table("resumes").select("id").limit(1).execute()
+            resume_uploaded = len(resume_res.data or []) > 0
+        except Exception:
+            pass
+
         # Fetch applications
         apps_res = supabase.table("applications").select("status").execute()
         apps = apps_res.data or []
@@ -265,7 +281,8 @@ def get_stats():
         return {
             "jobs_found": total_jobs,
             "application_counts": counts,
-            "match_distribution": distribution
+            "match_distribution": distribution,
+            "resume_uploaded": resume_uploaded
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

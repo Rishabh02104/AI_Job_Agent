@@ -336,11 +336,11 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            {/* Column Right: Automated Scheduler Configuration */}
+            {/* Column Right: Automated Scheduler Configuration & Browser Settings */}
             <div className="glass-card rounded-2xl p-6 space-y-6">
               <div className="flex items-center space-x-2 pb-3 border-b border-slate-800">
                 <Calendar className="h-5 w-5 text-indigo-500" />
-                <h3 className="text-base font-bold">Auto-Scout Scheduler</h3>
+                <h3 className="text-base font-bold">Scheduler & Browser Settings</h3>
               </div>
 
               <div className="space-y-4">
@@ -367,6 +367,32 @@ export default function SettingsPage() {
                     min={1}
                     max={168}
                     required
+                  />
+                </div>
+
+                <div className="flex items-center justify-between p-4 bg-slate-950 border border-slate-850 rounded-xl">
+                  <div>
+                    <p className="text-xs font-bold text-slate-200">Run Headless Browser</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">Run browser invisibly. Uncheck to watch/solve CAPTCHAs manually.</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={settings.run_headless || false}
+                    onChange={(e) => setSettings({ ...settings, run_headless: e.target.checked })}
+                    className="h-4 w-4 accent-indigo-600 rounded cursor-pointer"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between p-4 bg-slate-950 border border-slate-850 rounded-xl">
+                  <div>
+                    <p className="text-xs font-bold text-slate-200">Enable Auto-Apply</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">Automatically apply to compatible jobs without manually clicking approve.</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={settings.auto_apply || false}
+                    onChange={(e) => setSettings({ ...settings, auto_apply: e.target.checked })}
+                    className="h-4 w-4 accent-indigo-600 rounded cursor-pointer"
                   />
                 </div>
               </div>
