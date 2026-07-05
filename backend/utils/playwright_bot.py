@@ -188,6 +188,100 @@ async def handle_unconfirmed_submission(page: Page, job_id: str, job_url: str):
         f"  - Screenshot: {ss_path}"
     )
 
+async def redirect_to_company_site(page: Page, source: str, job_url: str, email: str = None, password: str = None) -> Page:
+    """
+    For aggregator listings (Indeed, Adzuna) that don't host their own 
+    application form, finds and follows the outbound 'apply on company site' link.
+    Handles direct link navigation, registration walls, and popup-based redirects.
+    """
+    logger.info(f"[Playwright Bot] Aggregator detected ({source}). Looking for outbound apply links on {job_url}...")
+    
+    # Check if page has already auto-redirected on load (server-side bounce)
+    current_url = page.url.lower()
+    is_aggregator = any(agg in current_url for agg in ["adzuna.", "indeed."]) or "dry_run_redirect" in current_url
+    if not is_aggregator:
+        logger.info(f"[Playwright Bot] Page auto-redirected on load to: {page.url}")
+        return page
+
+    apply_selectors = [
+        "a:has-text('Apply for this job')",
+        "button:has-text('Apply for this job')",
+        "a:has-text('Apply on company site')", 
+        "button:has-text('Apply on company site')",
+        "a:has-text('Apply now')", 
+        "button:has-text('Apply now')",
+        "a:has-text('Apply')",
+        "button:has-text('Apply')",
+        "#indeedApplyButton",
+        ".css-ia3gsu"
+    ]
+    
+    btn = None
+    for sel in apply_selectors:
+        try:
+            el = page.locator(sel).first
+            if await el.is_visible(timeout=1000):
+                btn = el
+                logger.info(f"[Playwright Bot] Found outbound link/button matching selector: {sel}")
+                break
+        except Exception:
+            pass
+            
+    if not btn:
+        raise Exception(f"No outbound apply link found on {source} listing page: {job_url}")
+        
+    # Extract href for direct navigation bypass
+    href = await btn.get_attribute("href")
+    if href and not href.startswith("javascript:"):
+        if not any(href.startswith(proto) for proto in ["http://", "https://", "file://"]):
+            from urllib.parse import urljoin
+            href = urljoin(page.url, href)
+        logger.info(f"[Playwright Bot] Navigating directly to outbound redirect link: {href}")
+        await page.goto(href)
+        await page.wait_for_load_state("networkidle")
+    else:
+        # Fallback to clicking the button
+        try:
+            async with page.expect_popup(timeout=4000) as popup_info:
+                await btn.click(force=True)
+            logger.info("[Playwright Bot] Outbound link opened in a new popup tab.")
+            page = await popup_info.value
+            await page.wait_for_load_state("networkidle")
+        except Exception as e:
+            logger.info(f"[Playwright Bot] No popup opened within timeout ({e}). Clicking in same tab...")
+            await btn.click(force=True)
+            try:
+                await page.wait_for_load_state("networkidle", timeout=12000)
+            except Exception:
+                pass
+
+    # Post-redirect: Handle Adzuna registration/login wall if it appears
+    if "adzuna." in page.url and "authenticate" in page.url:
+        logger.info("[Playwright Bot] Adzuna registration/login page detected. Auto-submitting credentials...")
+        email_field = page.locator("#email")
+        pass_field = page.locator("#password")
+        confirm_field = page.locator("#confirm-password")
+        
+        if await email_field.is_visible(timeout=2000):
+            email_val = email or "risha@example.com"
+            pass_val = password or "default_pass123"
+            await email_field.fill(email_val)
+            await pass_field.fill(pass_val)
+            
+            if await confirm_field.is_visible(timeout=1000):
+                await confirm_field.fill(pass_val)
+                submit_btn = page.locator("button:has-text('Create Account')").first
+                await submit_btn.click(force=True)
+            else:
+                submit_btn = page.locator("button[type='submit'], input[type='submit']").first
+                await submit_btn.click(force=True)
+                
+            try:
+                await page.wait_for_load_state("networkidle", timeout=12000)
+            except Exception:
+                pass
+    return page
+
 def answer_application_question(question: str, resume_json: dict, job_desc: str) -> str:
     """
     Uses Groq Llama-3.3-70b to answer custom/assessment application questions based on candidate resume.
@@ -403,21 +497,39 @@ async def submit_application_task(job_id: str):
         )
         page = await context.new_page()
         
+        target_page = page
+        target_url = job_url
         try:
-            if "internshala" in source or "internshala" in job_url:
+            # Follow aggregator redirect if applicable
+            is_aggregator = any(agg in source or agg in job_url for agg in ["adzuna", "indeed"])
+            is_ats = any(ats in job_url for ats in ["greenhouse.io", "lever.co"])
+            
+            if is_aggregator and not is_ats:
+                logger.info(f"[Playwright Bot] Aggregator page detected. Navigating to follow redirect link: {job_url}")
+                await page.goto(job_url)
+                await page.wait_for_load_state("networkidle")
+                target_page = await redirect_to_company_site(
+                    page, source, job_url, 
+                    email=candidate_email, 
+                    password=db_settings.get("internshala_password")
+                )
+                target_url = target_page.url
+                logger.info(f"[Playwright Bot] Redirect completed. New target URL: {target_url}")
+
+            if "internshala" in source or "internshala" in target_url:
                 await run_internshala_submission(
-                    page=page,
-                    job_url=job_url,
+                    page=target_page,
+                    job_url=target_url,
                     email=db_settings.get("internshala_email"),
                     password=db_settings.get("internshala_password"),
                     cover_letter=cover_letter,
                     resume_json=resume_json,
                     job_desc=job_data.get("description", "")
                 )
-            elif "greenhouse" in job_url:
+            elif "greenhouse" in target_url:
                 await run_greenhouse_submission(
-                    page=page,
-                    job_url=job_url,
+                    page=target_page,
+                    job_url=target_url,
                     name=candidate_name,
                     email=candidate_email,
                     phone=candidate_phone,
@@ -425,10 +537,10 @@ async def submit_application_task(job_id: str):
                     cover_letter=cover_letter,
                     settings_dict=db_settings
                 )
-            elif "lever" in job_url:
+            elif "lever" in target_url:
                 await run_lever_submission(
-                    page=page,
-                    job_url=job_url,
+                    page=target_page,
+                    job_url=target_url,
                     name=candidate_name,
                     email=candidate_email,
                     phone=candidate_phone,
@@ -439,8 +551,8 @@ async def submit_application_task(job_id: str):
             else:
                 # Fallback Generic form filler
                 await run_generic_submission(
-                    page=page,
-                    job_url=job_url,
+                    page=target_page,
+                    job_url=target_url,
                     name=candidate_name,
                     email=candidate_email,
                     phone=candidate_phone,
@@ -450,11 +562,11 @@ async def submit_application_task(job_id: str):
                 )
                 
             # Post-submission validation logic
-            success = await verify_submission_success(page)
+            success = await verify_submission_success(target_page)
             if success:
                 logger.info("[Playwright Bot] Submission confirmed successfully!")
                 ss_path = os.path.join(SCREENSHOT_DIR, f"{job_id}_success.png")
-                await page.screenshot(path=ss_path)
+                await target_page.screenshot(path=ss_path)
                 
                 # Update application status in DB
                 supabase.table("applications").update({
@@ -468,12 +580,12 @@ async def submit_application_task(job_id: str):
                     send_application_success_email(
                         job_title=job_data.get("title", "Unknown Role"),
                         company=job_data.get("company", "Unknown Company"),
-                        job_url=job_url
+                        job_url=target_url
                     )
                 except Exception as email_err:
                     logger.error(f"[Playwright Bot] Failed to trigger success email notification: {email_err}")
             else:
-                captcha_present = await detect_captcha(page)
+                captcha_present = await detect_captcha(target_page)
                 if captcha_present:
                     if run_headless:
                         logger.warning(
@@ -481,16 +593,16 @@ async def submit_application_task(job_id: str):
                             "Manual CAPTCHA solving requires 'run_headless' to be unchecked (False) in settings. "
                             "Treating as unconfirmed submission."
                         )
-                        await handle_unconfirmed_submission(page, job_id, job_url)
+                        await handle_unconfirmed_submission(target_page, job_id, target_url)
                     else:
                         # Inject visible title banner for headed resolution window identification
-                        await inject_captcha_banner(page, job_data.get("title", "Job"), job_data.get("company", "Company"))
+                        await inject_captcha_banner(target_page, job_data.get("title", "Job"), job_data.get("company", "Company"))
                         
-                        resolved = await wait_for_manual_captcha_resolution(page, job_id, timeout_seconds=180)
+                        resolved = await wait_for_manual_captcha_resolution(target_page, job_id, timeout_seconds=180)
                         if resolved:
                             logger.info("[Playwright Bot] Submission confirmed after manual CAPTCHA solving!")
                             ss_path = os.path.join(SCREENSHOT_DIR, f"{job_id}_success.png")
-                            await page.screenshot(path=ss_path)
+                            await target_page.screenshot(path=ss_path)
                             
                             # Update application status in DB
                             supabase.table("applications").update({
@@ -504,24 +616,24 @@ async def submit_application_task(job_id: str):
                                 send_application_success_email(
                                     job_title=job_data.get("title", "Unknown Role"),
                                     company=job_data.get("company", "Unknown Company"),
-                                    job_url=job_url
+                                    job_url=target_url
                                 )
                             except Exception as email_err:
                                 logger.error(f"[Playwright Bot] Failed to trigger success email notification: {email_err}")
                         else:
                             # Status is already needs_human (set in wait_for_manual_captcha_resolution)
                             ss_path = os.path.join(SCREENSHOT_DIR, f"{job_id}_needs_human.png")
-                            await page.screenshot(path=ss_path)
+                            await target_page.screenshot(path=ss_path)
                             logger.error(f"[Playwright Bot] CAPTCHA resolution timed out. Application status left as 'needs_human'. Screenshot saved to {ss_path}")
                 else:
                     # No CAPTCHA, no success signal -> unconfirmed submission
-                    await handle_unconfirmed_submission(page, job_id, job_url)
+                    await handle_unconfirmed_submission(target_page, job_id, target_url)
             
         except Exception as e:
             # Capture error state
             ss_path = os.path.join(SCREENSHOT_DIR, f"{job_id}_error.png")
             try:
-                await page.screenshot(path=ss_path)
+                await target_page.screenshot(path=ss_path)
             except Exception:
                 pass
             logger.error(f"[Playwright Bot] Submission failed: {e}. Saved error screenshot to {ss_path}")
@@ -601,9 +713,14 @@ async def run_greenhouse_submission(page: Page, job_url: str, name: str, email: 
     """
     Submits application on Greenhouse.
     """
-    logger.info(f"[Playwright Bot] Navigating to Greenhouse Job URL: {job_url}")
-    await page.goto(job_url)
-    await page.wait_for_load_state("networkidle")
+    curr_norm = page.url.split("?")[0].rstrip("/")
+    target_norm = job_url.split("?")[0].rstrip("/")
+    if curr_norm != target_norm:
+        logger.info(f"[Playwright Bot] Navigating to Greenhouse Job URL: {job_url}")
+        await page.goto(job_url)
+        await page.wait_for_load_state("networkidle")
+    else:
+        logger.info(f"[Playwright Bot] Browser already at Greenhouse target URL: {job_url}. Skipping navigation.")
     
     names = name.split(" ")
     first_name = names[0]
@@ -644,10 +761,15 @@ async def run_lever_submission(page: Page, job_url: str, name: str, email: str, 
     """
     Submits application on Lever.
     """
-    logger.info(f"[Playwright Bot] Navigating to Lever Job URL: {job_url}")
     apply_url = job_url if job_url.endswith("/apply") else f"{job_url}/apply"
-    await page.goto(apply_url)
-    await page.wait_for_load_state("networkidle")
+    curr_norm = page.url.split("?")[0].rstrip("/")
+    target_norm = apply_url.split("?")[0].rstrip("/")
+    if curr_norm != target_norm:
+        logger.info(f"[Playwright Bot] Navigating to Lever Job URL: {apply_url}")
+        await page.goto(apply_url)
+        await page.wait_for_load_state("networkidle")
+    else:
+        logger.info(f"[Playwright Bot] Browser already at Lever target URL: {apply_url}. Skipping navigation.")
     
     # Resume Upload
     if resume_path and os.path.exists(resume_path):
@@ -680,50 +802,29 @@ async def run_generic_submission(page: Page, job_url: str, name: str, email: str
     """
     Fallback generic form filler for other career portals.
     """
-    logger.info(f"[Playwright Bot] Navigating to Generic Job URL: {job_url}")
-    await page.goto(job_url)
-    await page.wait_for_load_state("networkidle")
+    curr_norm = page.url.split("?")[0].rstrip("/")
+    target_norm = job_url.split("?")[0].rstrip("/")
+    if curr_norm != target_norm:
+        logger.info(f"[Playwright Bot] Navigating to Generic Job URL: {job_url}")
+        await page.goto(job_url)
+        await page.wait_for_load_state("networkidle")
+    else:
+        logger.info(f"[Playwright Bot] Browser already at Generic target URL: {job_url}. Skipping navigation.")
     
     # Indeed external redirect handling
     if "indeed.com" in job_url:
         logger.info("[Playwright Bot] Indeed URL detected. Looking for redirect or easy apply buttons...")
-        apply_selectors = [
-            "a:has-text('Apply on company site')", 
-            "button:has-text('Apply on company site')",
-            "a:has-text('Apply now')", 
-            "button:has-text('Apply now')",
-            "#indeedApplyButton",
-            ".css-ia3gsu"
-        ]
-        
-        btn = None
-        for sel in apply_selectors:
-            el = page.locator(sel).first
-            if await el.is_visible():
-                btn = el
-                break
-                
-        if btn:
-            logger.info("[Playwright Bot] Found Indeed apply button. Clicking...")
-            try:
-                async with page.expect_popup(timeout=5000) as popup_info:
-                    await btn.click()
-                page = await popup_info.value
-                await page.wait_for_load_state("networkidle")
-                logger.info(f"[Playwright Bot] Redirected page URL: {page.url}")
-                
-                # Check for specialised handoffs
-                new_url = page.url
-                if "greenhouse" in new_url:
-                    await run_greenhouse_submission(page, new_url, name, email, phone, resume_path, cover_letter, settings_dict)
-                    return
-                elif "lever" in new_url:
-                    await run_lever_submission(page, new_url, name, email, phone, resume_path, cover_letter, settings_dict)
-                    return
-            except Exception as click_err:
-                logger.warning(f"[Playwright Bot] Indeed click redirect failed: {click_err}, continuing on current page...")
-                await btn.click()
-                await page.wait_for_timeout(4000)
+        try:
+            page = await redirect_to_company_site(page, "Indeed", job_url)
+            new_url = page.url
+            if "greenhouse" in new_url:
+                await run_greenhouse_submission(page, new_url, name, email, phone, resume_path, cover_letter, settings_dict)
+                return
+            elif "lever" in new_url:
+                await run_lever_submission(page, new_url, name, email, phone, resume_path, cover_letter, settings_dict)
+                return
+        except Exception as redirect_err:
+            logger.warning(f"[Playwright Bot] Indeed click redirect failed: {redirect_err}, continuing generic submission on page...")
                 
     apply_links = ["apply", "submit application", "apply now", "join us"]
     for link_text in apply_links:
