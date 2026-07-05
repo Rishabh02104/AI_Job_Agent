@@ -238,7 +238,10 @@ async def redirect_to_company_site(page: Page, source: str, job_url: str, email:
             href = urljoin(page.url, href)
         logger.info(f"[Playwright Bot] Navigating directly to outbound redirect link: {href}")
         await page.goto(href)
-        await page.wait_for_load_state("networkidle")
+        try:
+            await page.wait_for_load_state("networkidle", timeout=5000)
+        except Exception:
+            pass
     else:
         # Fallback to clicking the button
         try:
@@ -246,7 +249,10 @@ async def redirect_to_company_site(page: Page, source: str, job_url: str, email:
                 await btn.click(force=True)
             logger.info("[Playwright Bot] Outbound link opened in a new popup tab.")
             page = await popup_info.value
-            await page.wait_for_load_state("networkidle")
+            try:
+                await page.wait_for_load_state("networkidle", timeout=5000)
+            except Exception:
+                pass
         except Exception as e:
             logger.info(f"[Playwright Bot] No popup opened within timeout ({e}). Clicking in same tab...")
             await btn.click(force=True)
@@ -508,7 +514,10 @@ async def submit_application_task(job_id: str):
             if is_aggregator and not is_ats:
                 logger.info(f"[Playwright Bot] Aggregator page detected. Navigating to follow redirect link: {job_url}")
                 await page.goto(job_url)
-                await page.wait_for_load_state("networkidle")
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=5000)
+                except Exception:
+                    pass
                 target_page = await redirect_to_company_site(
                     page, source, job_url, 
                     email=candidate_email, 
