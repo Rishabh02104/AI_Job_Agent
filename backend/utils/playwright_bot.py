@@ -827,13 +827,26 @@ async def run_generic_submission(page: Page, job_url: str, name: str, email: str
         except Exception as redirect_err:
             logger.warning(f"[Playwright Bot] Indeed click redirect failed: {redirect_err}, continuing generic submission on page...")
                 
-    apply_links = ["apply", "submit application", "apply now", "join us"]
-    for link_text in apply_links:
-        btn = page.locator(f"text={link_text}").first
-        if await btn.is_visible():
-            await btn.click()
-            await page.wait_for_timeout(2000)
-            break
+    # Locate interactive links/buttons matching apply keywords
+    apply_selectors = [
+        "button:has-text('apply')",
+        "a:has-text('apply')",
+        "button:has-text('submit application')",
+        "a:has-text('submit application')",
+        "button:has-text('apply now')",
+        "a:has-text('apply now')",
+        "button:has-text('join us')",
+        "a:has-text('join us')"
+    ]
+    for sel in apply_selectors:
+        btn = page.locator(sel).first
+        try:
+            if await btn.is_visible():
+                await btn.click(force=True, timeout=3000)
+                await page.wait_for_timeout(2000)
+                break
+        except Exception:
+            pass
             
     name_inputs = await page.locator("input[name*='name'], input[id*='name']").all()
     for inp in name_inputs:
