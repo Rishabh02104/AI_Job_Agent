@@ -817,10 +817,36 @@ async def run_generic_submission(page: Page, job_url: str, name: str, email: str
     if curr_norm != target_norm:
         logger.info(f"[Playwright Bot] Navigating to Generic Job URL: {job_url}")
         await page.goto(job_url)
-        await page.wait_for_load_state("networkidle")
+        try:
+            await page.wait_for_load_state("networkidle", timeout=5000)
+        except Exception:
+            pass
     else:
         logger.info(f"[Playwright Bot] Browser already at Generic target URL: {job_url}. Skipping navigation.")
     
+    # Dismiss common popups/modals (e.g. login walls, cookie banners)
+    dismiss_selectors = [
+        "button[aria-label*='dismiss']",
+        "button[aria-label*='Dismiss']",
+        "button[aria-label*='close']",
+        "button[aria-label*='Close']",
+        "button.modal__dismiss",
+        "[class*='dismiss']",
+        "[class*='modal-close']",
+        "[class*='close-button']",
+        "button:has-text('Accept')",
+        "button:has-text('Accept All')"
+    ]
+    for sel in dismiss_selectors:
+        try:
+            btn = page.locator(sel).first
+            if await btn.is_visible():
+                await btn.click(force=True, timeout=2000)
+                logger.info(f"[Playwright Bot] Dismissed overlay using selector: {sel}")
+                await page.wait_for_timeout(1000)
+        except Exception:
+            pass
+
     # Indeed external redirect handling
     if "indeed.com" in job_url:
         logger.info("[Playwright Bot] Indeed URL detected. Looking for redirect or easy apply buttons...")
@@ -835,6 +861,32 @@ async def run_generic_submission(page: Page, job_url: str, name: str, email: str
                 return
         except Exception as redirect_err:
             logger.warning(f"[Playwright Bot] Indeed click redirect failed: {redirect_err}, continuing generic submission on page...")
+
+    # LinkedIn external redirect handling
+    if "linkedin.com" in page.url:
+        logger.info("[Playwright Bot] LinkedIn URL detected. Looking for redirect to company site...")
+        try:
+            # Look for Apply button
+            apply_btn = page.locator("button:has-text('Apply'), a:has-text('Apply')").first
+            if await apply_btn.is_visible():
+                async with page.expect_popup(timeout=8000) as popup_info:
+                    await apply_btn.click(force=True)
+                logger.info("[Playwright Bot] LinkedIn Apply button clicked. Following redirect popup...")
+                page = await popup_info.value
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=5000)
+                except Exception:
+                    pass
+                new_url = page.url
+                logger.info(f"[Playwright Bot] Redirected from LinkedIn to: {new_url}")
+                if "greenhouse" in new_url:
+                    await run_greenhouse_submission(page, new_url, name, email, phone, resume_path, cover_letter, settings_dict)
+                    return
+                elif "lever" in new_url:
+                    await run_lever_submission(page, new_url, name, email, phone, resume_path, cover_letter, settings_dict)
+                    return
+        except Exception as redirect_err:
+            logger.warning(f"[Playwright Bot] LinkedIn redirect click failed: {redirect_err}, continuing generic submission...")
                 
     # Locate interactive links/buttons matching apply keywords
     apply_selectors = [
